@@ -1,80 +1,42 @@
-import { createSignal, onMount, createEffect, For, Show } from 'solid-js';
-import { createEvent, supabase } from './supabaseClient';
-import { Auth } from '@supabase/auth-ui-solid';
-import { ThemeSupa } from '@supabase/auth-ui-shared';
+import { createSignal, createEffect, For, Show } from 'solid-js';
+import { createEvent } from './supabaseClient';
 import { SolidMarkdown } from "solid-markdown";
 
 function App() {
   const [jokes, setJokes] = createSignal([]);
   const [newJoke, setNewJoke] = createSignal({ setup: '', punchline: '' });
-  const [user, setUser] = createSignal(null);
-  const [currentPage, setCurrentPage] = createSignal('login');
   const [loading, setLoading] = createSignal(false);
   const [generatedImage, setGeneratedImage] = createSignal('');
   const [audioUrl, setAudioUrl] = createSignal('');
   const [markdownText, setMarkdownText] = createSignal('');
 
-  const checkUserSignedIn = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      setUser(user);
-      setCurrentPage('homePage');
-    }
-  };
-
-  onMount(checkUserSignedIn);
-
-  createEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((_, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        setCurrentPage('homePage');
-      } else {
-        setUser(null);
-        setCurrentPage('login');
-      }
-    });
-
-    return () => {
-      authListener.unsubscribe();
-    };
-  });
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setCurrentPage('login');
-  };
-
   const fetchJokes = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch('/api/getJokes', {
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`
+    try {
+      const response = await fetch('/api/getJokes');
+      if (response.ok) {
+        const data = await response.json();
+        setJokes(data);
+      } else {
+        console.error('Error fetching jokes:', response.statusText);
       }
-    });
-    if (response.ok) {
-      const data = await response.json();
-      setJokes(data);
-    } else {
-      console.error('Error fetching jokes:', response.statusText);
+    } catch (error) {
+      console.error('Error fetching jokes:', error);
     }
   };
 
   const saveJoke = async (e) => {
     e.preventDefault();
-    const { data: { session } } = await supabase.auth.getSession();
     try {
       const response = await fetch('/api/saveJoke', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(newJoke()),
       });
       if (response.ok) {
-        setJokes([...jokes(), newJoke()]);
+        const savedJoke = await response.json();
+        setJokes([...jokes(), savedJoke]);
         setNewJoke({ setup: '', punchline: '' });
       } else {
         console.error('Error saving joke');
@@ -85,7 +47,6 @@ function App() {
   };
 
   createEffect(() => {
-    if (!user()) return;
     fetchJokes();
   });
 
@@ -119,6 +80,10 @@ function App() {
   };
 
   const handleTextToSpeech = async () => {
+    if (!newJoke().setup || !newJoke().punchline) {
+      alert('Please enter a joke first.');
+      return;
+    }
     setLoading(true);
     try {
       const result = await createEvent('text_to_speech', {
@@ -149,152 +114,116 @@ function App() {
 
   return (
     <div class="h-full bg-gradient-to-br from-purple-100 to-blue-100 p-4 text-gray-800">
-      <Show
-        when={currentPage() === 'homePage'}
-        fallback={
-          <div class="flex items-center justify-center h-full">
-            <div class="w-full max-w-md p-8 bg-white rounded-xl shadow-lg">
-              <h2 class="text-3xl font-bold mb-6 text-center text-purple-600">Sign in with ZAPT</h2>
-              <a
-                href="https://www.zapt.ai"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-blue-500 hover:underline mb-6 block text-center"
-              >
-                Learn more about ZAPT
-              </a>
-              <Auth
-                supabaseClient={supabase}
-                appearance={{ theme: ThemeSupa }}
-                providers={['google', 'facebook', 'apple']}
-                magicLink={true}
-                view="magic_link"
-                showLinks={false}
-                authView="magic_link"
+      <div class="max-w-6xl mx-auto h-full flex flex-col">
+        <div class="flex justify-between items-center mb-8">
+          <h1 class="text-4xl font-bold text-purple-600">Joke Central</h1>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 flex-grow">
+          <div class="col-span-1 md:col-span-2 lg:col-span-1">
+            <h2 class="text-2xl font-bold mb-4 text-purple-600">Add New Joke</h2>
+            <form onSubmit={saveJoke} class="space-y-4">
+              <input
+                type="text"
+                placeholder="Setup"
+                value={newJoke().setup}
+                onInput={(e) => setNewJoke({ ...newJoke(), setup: e.target.value })}
+                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-transparent box-border text-gray-800"
+                required
               />
-            </div>
-          </div>
-        }
-      >
-        <div class="max-w-6xl mx-auto h-full flex flex-col">
-          <div class="flex justify-between items-center mb-8">
-            <h1 class="text-4xl font-bold text-purple-600">Joke Central</h1>
-            <button
-              class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded-full shadow-md focus:outline-none focus:ring-2 focus:ring-red-400 transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer"
-              onClick={handleSignOut}
-            >
-              Sign Out
-            </button>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 flex-grow">
-            <div class="col-span-1 md:col-span-2 lg:col-span-1">
-              <h2 class="text-2xl font-bold mb-4 text-purple-600">Add New Joke</h2>
-              <form onSubmit={saveJoke} class="space-y-4">
-                <input
-                  type="text"
-                  placeholder="Setup"
-                  value={newJoke().setup}
-                  onInput={(e) => setNewJoke({ ...newJoke(), setup: e.target.value })}
-                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-transparent box-border text-gray-800"
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder="Punchline"
-                  value={newJoke().punchline}
-                  onInput={(e) => setNewJoke({ ...newJoke(), punchline: e.target.value })}
-                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-transparent box-border text-gray-800"
-                  required
-                />
-                <div class="flex space-x-4">
-                  <button
-                    type="submit"
-                    class="flex-1 px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer"
-                  >
-                    Save Joke
-                  </button>
-                  <button
-                    type="button"
-                    class={`flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    onClick={handleGenerateJoke}
-                    disabled={loading()}
-                  >
-                    <Show when={loading()}>Generating...</Show>
-                    <Show when={!loading()}>Generate Joke</Show>
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <div class="col-span-1 md:col-span-2 lg:col-span-1 overflow-y-auto">
-              <h2 class="text-2xl font-bold mb-4 text-purple-600">Joke List</h2>
-              <div class="space-y-4 pr-4">
-                <For each={jokes()}>
-                  {(joke) => (
-                    <div class="bg-white p-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
-                      <p class="font-semibold text-lg text-purple-600 mb-2">{joke.setup}</p>
-                      <p class="text-gray-700">{joke.punchline}</p>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </div>
-
-            <div class="col-span-1 md:col-span-2 lg:col-span-1">
-              <h2 class="text-2xl font-bold mb-4 text-purple-600">Additional Features</h2>
-              <div class="space-y-4">
+              <input
+                type="text"
+                placeholder="Punchline"
+                value={newJoke().punchline}
+                onInput={(e) => setNewJoke({ ...newJoke(), punchline: e.target.value })}
+                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-transparent box-border text-gray-800"
+                required
+              />
+              <div class="flex space-x-4">
                 <button
-                  onClick={handleGenerateImage}
-                  class={`w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  type="submit"
+                  class="flex-1 px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer"
+                >
+                  Save Joke
+                </button>
+                <button
+                  type="button"
+                  class={`flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  onClick={handleGenerateJoke}
                   disabled={loading()}
                 >
-                  Generate Image
-                </button>
-                <Show when={newJoke().setup && newJoke().punchline}>
-                  <button
-                    onClick={handleTextToSpeech}
-                    class={`w-full px-6 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    disabled={loading()}
-                  >
-                    Text to Speech
-                  </button>
-                </Show>
-                <button
-                  onClick={handleMarkdownGeneration}
-                  class={`w-full px-6 py-3 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  disabled={loading()}
-                >
-                  Generate Markdown
+                  <Show when={loading()}>Generating...</Show>
+                  <Show when={!loading()}>Generate Joke</Show>
                 </button>
               </div>
+            </form>
+          </div>
+
+          <div class="col-span-1 md:col-span-2 lg:col-span-1 overflow-y-auto">
+            <h2 class="text-2xl font-bold mb-4 text-purple-600">Joke List</h2>
+            <div class="space-y-4 pr-4">
+              <For each={jokes()}>
+                {(joke) => (
+                  <div class="bg-white p-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                    <p class="font-semibold text-lg text-purple-600 mb-2">{joke.setup}</p>
+                    <p class="text-gray-700">{joke.punchline}</p>
+                  </div>
+                )}
+              </For>
             </div>
           </div>
 
-          <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <Show when={generatedImage()}>
-              <div>
-                <h3 class="text-xl font-bold mb-2 text-purple-600">Generated Image</h3>
-                <img src={generatedImage()} alt="Generated joke image" class="w-full rounded-lg shadow-md" />
-              </div>
-            </Show>
-            <Show when={audioUrl()}>
-              <div>
-                <h3 class="text-xl font-bold mb-2 text-purple-600">Audio Joke</h3>
-                <audio controls src={audioUrl()} class="w-full" />
-              </div>
-            </Show>
-            <Show when={markdownText()}>
-              <div>
-                <h3 class="text-xl font-bold mb-2 text-purple-600">Markdown Story</h3>
-                <div class="bg-white p-4 rounded-lg shadow-md">
-                  <SolidMarkdown children={markdownText()} />
-                </div>
-              </div>
-            </Show>
+          <div class="col-span-1 md:col-span-2 lg:col-span-1">
+            <h2 class="text-2xl font-bold mb-4 text-purple-600">Additional Features</h2>
+            <div class="space-y-4">
+              <button
+                onClick={handleGenerateImage}
+                class={`w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                disabled={loading()}
+              >
+                Generate Image
+              </button>
+              <button
+                onClick={handleTextToSpeech}
+                class={`w-full px-6 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() || (!newJoke().setup || !newJoke().punchline) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                disabled={loading() || (!newJoke().setup || !newJoke().punchline)}
+              >
+                Text to Speech
+              </button>
+              <button
+                onClick={handleMarkdownGeneration}
+                class={`w-full px-6 py-3 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition duration-300 ease-in-out transform hover:scale-105 ${loading() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                disabled={loading()}
+              >
+                Generate Markdown
+              </button>
+            </div>
           </div>
         </div>
-      </Show>
+
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <Show when={generatedImage()}>
+            <div>
+              <h3 class="text-xl font-bold mb-2 text-purple-600">Generated Image</h3>
+              <img src={generatedImage()} alt="Generated joke image" class="w-full rounded-lg shadow-md" />
+            </div>
+          </Show>
+          <Show when={audioUrl()}>
+            <div>
+              <h3 class="text-xl font-bold mb-2 text-purple-600">Audio Joke</h3>
+              <audio controls src={audioUrl()} class="w-full" />
+            </div>
+          </Show>
+          <Show when={markdownText()}>
+            <div>
+              <h3 class="text-xl font-bold mb-2 text-purple-600">Markdown Story</h3>
+              <div class="bg-white p-4 rounded-lg shadow-md">
+                <SolidMarkdown children={markdownText()} />
+              </div>
+            </div>
+          </Show>
+        </div>
+      </div>
     </div>
   );
 }
