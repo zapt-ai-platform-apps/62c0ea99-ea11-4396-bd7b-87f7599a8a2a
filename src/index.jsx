@@ -2,7 +2,6 @@ import { render } from 'solid-js/web';
 import App from './App';
 import './index.css';
 import * as Sentry from "@sentry/browser";
-import { createEvent, supabase } from './supabaseClient';
 
 // Initialize Sentry
 Sentry.init({

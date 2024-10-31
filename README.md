@@ -16,7 +16,7 @@ Welcome to **New App**, your personal hub for jokes and laughter! This app allow
 
 4. **Generate a Joke**
    - Let the AI generate a new joke for you.
-   - Click "Generate Joke" to receive a fresh joke in JSON format.
+   - Click "Generate Joke" to receive a fresh joke.
 
 5. **Additional Features**
    - **Generate Image**: Create a fun image based on a humorous prompt.
